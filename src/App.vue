@@ -1,10 +1,11 @@
 <script setup>
-import {ref} from "vue";
+import {computed, onMounted, ref} from "vue";
 
 const search = ref();
 const selectedTicker = ref(null);
 const tickers = ref([]);
 const graph = ref([]);
+const error = ref(false);
 
 function addTicker() {
   const newTicker = {
@@ -12,6 +13,10 @@ function addTicker() {
       title: search.value,
       price: '-'
 }
+  if (tickers.value.find(elem => elem.title.toLowerCase() == newTicker.title.toLowerCase())) {
+    error.value = true;
+    return;
+  }
   tickers.value.push(newTicker);
   setInterval(async() => {
     const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker.title}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
@@ -45,6 +50,47 @@ function deleteTicker(tickerTitle) {
   };
 }
 
+onMounted(() => {
+  getTickersNames();
+})
+
+async function getTickersNames() {
+  let res = await fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true');
+  res = await res.json();
+  localStorage.setItem('tickers', JSON.stringify(res.Data))
+}
+
+const suggestedTickers = computed(() => {
+  if (!localStorage.getItem('tickers')) {
+    return [];
+  }
+
+  const suggested = JSON.parse(localStorage.getItem('tickers'))
+  return Object.values(suggested).filter((item) => item.Symbol.toLowerCase().includes(search.value)).splice(0,4);
+})
+
+function addSuggestedTicker(tickerName) {
+  const newTicker = {
+    id: Math.random(),
+    title: tickerName,
+    price: '-'
+  }
+  if (tickers.value.find(elem => elem.title.toLowerCase() == newTicker.title.toLowerCase())) {
+    error.value = true;
+    return;
+  }
+  tickers.value.push(newTicker);
+  setInterval(async() => {
+    const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker.title}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
+    const res = await f.json();
+    tickers.value.find((item) => item.title === newTicker.title).price = res.USD > 1 ? res.USD.toFixed(2) : res.USD.toPrecision(2)
+
+    if (selectedTicker.value?.title === newTicker.title) {
+      graph.value.push(res.USD)
+    }
+  }, 5000)
+}
+
 
 </script>
 
@@ -65,6 +111,7 @@ function deleteTicker(tickerTitle) {
             </label>
             <div class="mt-1 relative rounded-md shadow-md">
               <input
+                  @keydown="error = false"
                   v-model="search"
                   @keydown.enter="addTicker"
                   type="text"
@@ -74,21 +121,12 @@ function deleteTicker(tickerTitle) {
                   placeholder="Например DOGE"
               />
             </div>
-<!--            <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">-->
-<!--            <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">-->
-<!--              BTC-->
-<!--            </span>-->
-<!--              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">-->
-<!--              DOGE-->
-<!--            </span>-->
-<!--              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">-->
-<!--              BCH-->
-<!--            </span>-->
-<!--              <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">-->
-<!--              CHD-->
-<!--            </span>-->
-<!--            </div>-->
-<!--            <div class="text-sm text-red-600">Такой тикер уже добавлен</div>-->
+            <div v-if="search && suggestedTickers" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <span @click="addSuggestedTicker(suggestedT.Symbol)" v-for="suggestedT in suggestedTickers" :key="suggestedT.Symbol" class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
+              {{suggestedT.Symbol}}
+            </span>
+            </div>
+            <div v-if="error" class="text-sm text-red-600">Такой тикер уже добавлен</div>
           </div>
         </div>
         <button
