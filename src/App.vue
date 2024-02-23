@@ -7,28 +7,35 @@ const tickers = ref([]);
 const graph = ref([]);
 const error = ref(false);
 
-function addTicker() {
+function addTicker(name) {
   const newTicker = {
       id: Math.random(),
-      title: search.value,
+      title: typeof name == 'string' ? name : search.value,
       price: '-'
 }
+
   if (tickers.value.find(elem => elem.title.toLowerCase() == newTicker.title.toLowerCase())) {
     error.value = true;
     return;
   }
   tickers.value.push(newTicker);
-  setInterval(async() => {
-    const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker.title}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
-    const res = await f.json();
-    tickers.value.find((item) => item.title === newTicker.title).price = res.USD > 1 ? res.USD.toFixed(2) : res.USD.toPrecision(2)
 
-    if (selectedTicker.value?.title === newTicker.title) {
+  localStorage.setItem('crypto-list', JSON.stringify(tickers.value))
+  subscribeToUpdates(newTicker.title)
+
+  search.value = '';
+}
+
+function subscribeToUpdates(name) {
+  setInterval(async() => {
+    const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${name}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
+    const res = await f.json();
+    tickers.value.find((item) => item.title === name).price = res.USD > 1 ? res.USD.toFixed(2) : res.USD.toPrecision(2)
+
+    if (selectedTicker.value?.title === name) {
       graph.value.push(res.USD)
     }
   }, 5000)
-
-  search.value = '';
 }
 
 function selectTicker(ticker) {
@@ -52,6 +59,8 @@ function deleteTicker(tickerTitle) {
 
 onMounted(() => {
   getTickersNames();
+  tickers.value = JSON.parse(localStorage.getItem('crypto-list')) ?? [];
+  tickers.value.forEach((item) => subscribeToUpdates(item.title))
 })
 
 async function getTickersNames() {
@@ -64,33 +73,9 @@ const suggestedTickers = computed(() => {
   if (!localStorage.getItem('tickers')) {
     return [];
   }
-
   const suggested = JSON.parse(localStorage.getItem('tickers'))
   return Object.values(suggested).filter((item) => item.Symbol.toLowerCase().includes(search.value)).splice(0,4);
 })
-
-function addSuggestedTicker(tickerName) {
-  const newTicker = {
-    id: Math.random(),
-    title: tickerName,
-    price: '-'
-  }
-  if (tickers.value.find(elem => elem.title.toLowerCase() == newTicker.title.toLowerCase())) {
-    error.value = true;
-    return;
-  }
-  tickers.value.push(newTicker);
-  setInterval(async() => {
-    const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${newTicker.title}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
-    const res = await f.json();
-    tickers.value.find((item) => item.title === newTicker.title).price = res.USD > 1 ? res.USD.toFixed(2) : res.USD.toPrecision(2)
-
-    if (selectedTicker.value?.title === newTicker.title) {
-      graph.value.push(res.USD)
-    }
-  }, 5000)
-}
-
 
 </script>
 
@@ -122,7 +107,7 @@ function addSuggestedTicker(tickerName) {
               />
             </div>
             <div v-if="search && suggestedTickers" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
-            <span @click="addSuggestedTicker(suggestedT.Symbol)" v-for="suggestedT in suggestedTickers" :key="suggestedT.Symbol" class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
+            <span @click="addTicker(suggestedT.Symbol)" v-for="suggestedT in suggestedTickers" :key="suggestedT.Symbol" class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
               {{suggestedT.Symbol}}
             </span>
             </div>
