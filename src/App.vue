@@ -196,6 +196,3 @@ function deleteTicker(tickerTitle) {
     </div>
   </div>
 </template>
-
-<style src="./app.css">
-</style>
