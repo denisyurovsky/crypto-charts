@@ -1,11 +1,13 @@
 <script setup>
-import {computed, onMounted, ref} from "vue";
+import {computed, onMounted, ref, watch} from "vue";
 
 const search = ref();
 const selectedTicker = ref(null);
 const tickers = ref([]);
 const graph = ref([]);
 const error = ref(false);
+const filterSearch = ref('');
+const page = ref(1);
 
 function addTicker(name) {
   const newTicker = {
@@ -24,6 +26,7 @@ function addTicker(name) {
   subscribeToUpdates(newTicker.title)
 
   search.value = '';
+  filterSearch.value = '';
 }
 
 function subscribeToUpdates(name) {
@@ -58,9 +61,20 @@ function deleteTicker(tickerTitle) {
 }
 
 onMounted(() => {
+  const windowData = Object.fromEntries(new URL(window.location).searchParams);
+
+  if (windowData.filter) {
+    filterSearch.value = windowData.filter
+  }
+
+  if (windowData.page) {
+    page.value = Number(windowData.page)
+  }
+
   getTickersNames();
   tickers.value = JSON.parse(localStorage.getItem('crypto-list')) ?? [];
   tickers.value.forEach((item) => subscribeToUpdates(item.title))
+
 })
 
 async function getTickersNames() {
@@ -77,10 +91,41 @@ const suggestedTickers = computed(() => {
   return Object.values(suggested).filter((item) => item.Symbol.toLowerCase().includes(search.value)).splice(0,4);
 })
 
+const filteredTickers = computed(() => {
+  if (!filterSearch.value) {
+    return tickers.value
+  }
+    return tickers.value.filter((item) => item.title.toLowerCase().includes(filterSearch.value))
+})
+
+const tickersPaged = computed(() => {
+  const start = (page.value - 1) * 6
+  const end = page.value * 6;
+  return filteredTickers.value.slice(start,end)
+})
+
+const hasNextPage = computed(() => {
+  if (!filterSearch.value) {
+    return tickers.value[6 * page.value] !== undefined
+  } else {
+    return filteredTickers.value[6 * page.value] !== undefined
+  }
+})
+
+watch(filterSearch, () => {
+  page.value = 1;
+  const { pathname } = window.location;
+  history.pushState(null, document.title, `${pathname}?filter=${filterSearch.value}&page=${page.value}`)
+})
+
+watch(page, () => {
+  const { pathname } = window.location;
+  history.pushState(null, document.title, `${pathname}?filter=${filterSearch.value}&page=${page.value}`)
+})
 </script>
 
 <template>
-  <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+  <div class="min-h-dvh mx-auto flex flex-col items-center bg-gray-100 p-4">
 <!--    <div class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center">-->
 <!--      <svg class="animate-spin -ml-1 mr-3 h-12 w-12 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">-->
 <!--        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>-->
@@ -89,7 +134,7 @@ const suggestedTickers = computed(() => {
 <!--    </div>-->
     <div class="container">
       <section>
-        <div class="flex">
+        <div class="flex flex-col">
           <div class="max-w-xs">
             <label for="wallet" class="block text-sm font-medium text-gray-700">
               Тикер
@@ -113,33 +158,39 @@ const suggestedTickers = computed(() => {
             </div>
             <div v-if="error" class="text-sm text-red-600">Такой тикер уже добавлен</div>
           </div>
-        </div>
-        <button
-            @click="addTicker"
-            type="button"
-            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-        >
-          <!-- Heroicon name: solid/mail -->
-          <svg
-              class="-ml-0.5 mr-2 h-6 w-6"
-              xmlns="http://www.w3.org/2000/svg"
-              width="30"
-              height="30"
-              viewBox="0 0 24 24"
-              fill="#ffffff"
+          <button
+              @click="addTicker"
+              type="button"
+              class="w-36 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           >
-            <path
-                d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-            ></path>
-          </svg>
-          Добавить
-        </button>
+            <!-- Heroicon name: solid/mail -->
+            <svg
+                class="-ml-0.5 mr-2 h-6 w-6"
+                xmlns="http://www.w3.org/2000/svg"
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                fill="#ffffff"
+            >
+              <path
+                  d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
+              ></path>
+            </svg>
+            Добавить
+          </button>
+        </div>
       </section>
 
-      <hr v-if="tickers.length" class="w-full border-t border-gray-600 my-4" />
+      <hr v-if="tickersPaged.length" class="w-full border-t border-gray-600 my-4" />
+      <div class="w-full flex flex-col gap-6">
+        <div><button v-if="page > 1" @click="page = page - 1">Назад</button>
+          <button v-if="hasNextPage" @click="page = page + 1">Вперед</button>
+        </div>
+        <div class="text-black">Фильтр: <input v-model="filterSearch" /></div>
+      </div>
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div
-            v-for="ticker in tickers"
+            v-for="ticker in tickersPaged"
             :key="ticker.title"
             @click="selectTicker(ticker)"
             :class="{
