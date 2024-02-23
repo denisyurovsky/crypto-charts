@@ -1,29 +1,47 @@
 const API_KEY='71f82462b170f0904dcc21a95e50af524f680b4d438e99a3888fee58e37f5376'
 
 const tickersHandlers = new Map();
-export const loadTicker =  async () => {
-    if (tickersHandlers.size === 0) {
+const websocket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`)
+
+const aggrIndex = "5";
+
+websocket.addEventListener('message', e => {
+    const {TYPE: type, FROMSYMBOL: currency, PRICE: price} = JSON.parse(e.data)
+    if (type !== aggrIndex) {
         return;
     }
-    const f = await fetch(`https://min-api.cryptocompare.com/data/pricemulti?fsyms=${[...tickersHandlers.keys()].join(',')}&tsyms=USD&api_key=${API_KEY}`)
-    const res =  await f.json()
-    const updatedPrices =  Object.fromEntries(Object.entries(res).map(([key, value]) => [key, value.USD]))
 
-    Object.entries(updatedPrices).forEach(([currency, newPrice]) => {
-        const handlers = tickersHandlers.get(currency) ?? [];
-        handlers.forEach(fn => fn(newPrice))
-    })
+    const handlers = tickersHandlers.get(currency) ?? [];
+    handlers.forEach(fn => fn(price))
+})
+
+
+function sendToWs(message) {
+    const stringMessage = JSON.stringify(message)
+    if (websocket.readyState === WebSocket.OPEN) {
+        websocket.send(stringMessage)
+    }
+
+    websocket.addEventListener('open', () => {
+        websocket.send(stringMessage)
+    }, {once: true})
 }
 
 export const subscribeToTickers = (ticker, cb) => {
     const subscribers = tickersHandlers.get(ticker) || [];
     tickersHandlers.set(ticker, [...subscribers, cb])
+    sendToWs({
+            "action": "SubAdd",
+            subs: [`5~CCCAGG~${ticker}~USD`]
+        }
+    )
 }
 
 export const unsubscribeTicker = (ticker) => {
-    // const subscribers = tickersHandlers.get(ticker) || [];
-    // tickersHandlers.set(ticker, subscribers.filter(fn => fn !== cb))
     tickersHandlers.delete(ticker)
+    sendToWs({
+        "action": "SubRemove",
+        "subs": [`5~CCCAGG~${ticker}~USD`]
+    })
 }
 
-setInterval(loadTicker, 5000)
