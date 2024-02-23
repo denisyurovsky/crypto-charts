@@ -1,6 +1,6 @@
 <script setup>
 import {computed, onMounted, ref, watch} from "vue";
-
+import {subscribeToTickers, unsubscribeTicker} from "./api.js";
 const search = ref();
 const selectedTicker = ref(null);
 const tickers = ref([]);
@@ -13,51 +13,51 @@ function addTicker(name) {
   const newTicker = {
       id: Math.random(),
       title: typeof name == 'string' ? name : search.value,
-      price: '-'
+      price: null
 }
 
-  if (tickers.value.find(elem => elem.title.toLowerCase() == newTicker.title.toLowerCase())) {
+  if (tickers.value.find(elem => elem.title.toLowerCase() === newTicker.title.toLowerCase())) {
     error.value = true;
     return;
   }
   tickers.value.push(newTicker);
-
   localStorage.setItem('crypto-list', JSON.stringify(tickers.value))
-  subscribeToUpdates(newTicker.title)
 
   search.value = '';
   filterSearch.value = '';
+  subscribeToTickers(newTicker.title, (p) =>updateTicker(name, p))
 }
 
-function subscribeToUpdates(name) {
-  setInterval(async() => {
-    const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${name}&tsyms=USD&api_key=5d79b682d11d16082441c3ad718712090cec44223b494c9b7417d396ba5dfdbd`)
-    const res = await f.json();
-    tickers.value.find((item) => item.title === name).price = res.USD > 1 ? res.USD.toFixed(2) : res.USD.toPrecision(2)
-
-    if (selectedTicker.value?.title === name) {
-      graph.value.push(res.USD)
-    }
-  }, 5000)
+function formatPrice(price) {
+  if (!price) {
+    return '-'
+  }const formattedPrice = price > 1 ? price.toFixed(2) : price.toPrecision(2)
+  return formattedPrice
 }
 
 function selectTicker(ticker) {
   selectedTicker.value = ticker;
-  graph.value = [];
 }
 
-function normalizeGraph() {
+const normalizedGraph = computed(() => {
   const max = Math.max(...graph.value)
   const min = Math.min(...graph.value)
 
+  if (max === min) {
+    return graph.value.map(() => 50)
+  }
+
   return graph.value.map(price => 5 + ((price - min) * 95) / (max - min))
 
-}
+})
 function deleteTicker(tickerTitle) {
-  tickers.value = tickers.value.filter((item) => item.title !== tickerTitle)
-  if (tickerTitle == selectedTicker.value?.title) {
+  tickers.value = tickers.value.filter((item) => item.title !== tickerTitle);
+  localStorage.setItem('crypto-list', JSON.stringify(tickers.value))
+  if (tickerTitle.toLowerCase() === selectedTicker.value?.title.toLowerCase()) {
     selectedTicker.value = null
   };
+
+  unsubscribeTicker(tickerTitle)
 }
 
 onMounted(() => {
@@ -73,9 +73,17 @@ onMounted(() => {
 
   getTickersNames();
   tickers.value = JSON.parse(localStorage.getItem('crypto-list')) ?? [];
-  tickers.value.forEach((item) => subscribeToUpdates(item.title))
 
+    tickers.value.forEach((ticker) => {
+      subscribeToTickers(ticker.title, (p) => updateTicker(ticker.title, p))
+    })
 })
+
+function updateTicker(ticker, price) {
+  tickers.value.filter(t => t.title == ticker).forEach(t => {
+    t.price = price
+  })
+}
 
 async function getTickersNames() {
   let res = await fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true');
@@ -98,10 +106,16 @@ const filteredTickers = computed(() => {
     return tickers.value.filter((item) => item.title.toLowerCase().includes(filterSearch.value))
 })
 
+const start = computed(() => {
+  return (page.value -1) * 6
+})
+
+const end = computed(() => {
+  return page.value * 6;
+})
+
 const tickersPaged = computed(() => {
-  const start = (page.value - 1) * 6
-  const end = page.value * 6;
-  return filteredTickers.value.slice(start,end)
+  return filteredTickers.value.slice(start.value,end.value)
 })
 
 const hasNextPage = computed(() => {
@@ -112,15 +126,30 @@ const hasNextPage = computed(() => {
   }
 })
 
-watch(filterSearch, () => {
-  page.value = 1;
-  const { pathname } = window.location;
-  history.pushState(null, document.title, `${pathname}?filter=${filterSearch.value}&page=${page.value}`)
+const pageStateOptions = computed(() => {
+  return {
+    filter: filterSearch.value,
+    page: page.value
+  }
 })
 
-watch(page, () => {
+watch(filterSearch, () => {
+  page.value = 1;
+})
+
+watch(pageStateOptions, (v) => {
   const { pathname } = window.location;
-  history.pushState(null, document.title, `${pathname}?filter=${filterSearch.value}&page=${page.value}`)
+  history.pushState(null, document.title, `${pathname}?filter=${v.filter}&page=${v.page}`)
+})
+
+watch(selectedTicker, () => {
+  graph.value = [];
+})
+
+watch(tickersPaged, () => {
+  if (tickersPaged.value.length === 0 && page.value > 1) {
+    page.value -= 1;
+  }
 })
 </script>
 
@@ -163,7 +192,6 @@ watch(page, () => {
               type="button"
               class="w-36 my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           >
-            <!-- Heroicon name: solid/mail -->
             <svg
                 class="-ml-0.5 mr-2 h-6 w-6"
                 xmlns="http://www.w3.org/2000/svg"
@@ -203,7 +231,7 @@ watch(page, () => {
               {{ticker.title}} - USD
             </dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
-              {{ticker.price}}
+              {{formatPrice(ticker.price)}}
             </dd>
           </div>
           <div class="w-full border-t border-gray-200"></div>
@@ -226,14 +254,14 @@ watch(page, () => {
           </button>
         </div>
       </dl>
-      <hr v-if="tickers.length" class="w-full border-t border-gray-600 my-4" />
+      <hr v-if="selectedTicker" class="w-full border-t border-gray-600 my-4" />
       <section v-if="selectedTicker" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{selectedTicker.title}} - USD
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-              v-for="(bar,idx) in normalizeGraph()"
+              v-for="(bar,idx) in normalizedGraph"
               :key="idx"
               :style="{height: `${bar}%`}"
               class="bg-purple-800 border w-10"
