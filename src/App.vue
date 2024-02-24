@@ -12,7 +12,7 @@ const page = ref(1);
 function addTicker(name) {
   const newTicker = {
       id: Math.random(),
-      title: typeof name == 'string' ? name : search.value,
+      title: typeof name == 'string' ? name.toUpperCase() : search.value.toUpperCase(),
       price: null
 }
 
@@ -29,7 +29,7 @@ function addTicker(name) {
 }
 
 function formatPrice(price) {
-  if (!price) {
+  if (!price || typeof price !== 'number') {
     return '-'
   }const formattedPrice = price > 1 ? price.toFixed(2) : price.toPrecision(2)
   return formattedPrice
@@ -62,11 +62,9 @@ function deleteTicker(tickerTitle) {
 
 onMounted(() => {
   const windowData = Object.fromEntries(new URL(window.location).searchParams);
-
   if (windowData.filter) {
     filterSearch.value = windowData.filter
   }
-
   if (windowData.page) {
     page.value = Number(windowData.page)
   }
@@ -81,6 +79,9 @@ onMounted(() => {
 
 function updateTicker(ticker, price) {
   tickers.value.filter(t => t.title == ticker).forEach(t => {
+    if (t == selectedTicker.value) {
+      graph.value.push(price)
+    }
     t.price = price
   })
 }
@@ -222,7 +223,8 @@ watch(tickersPaged, () => {
             :key="ticker.title"
             @click="selectTicker(ticker)"
             :class="{
-              'border-4': ticker.title === selectedTicker?.title
+              'border-4': ticker.title === selectedTicker?.title,
+              'bg-red-100': ticker.price === 'invalid ticker'
             }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
