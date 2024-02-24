@@ -1,5 +1,5 @@
 <script setup>
-import {computed, onMounted, ref, watch} from "vue";
+import {computed, onMounted, onUnmounted, ref, watch} from "vue";
 import {subscribeToTickers, unsubscribeTicker} from "./api.js";
 const search = ref();
 const selectedTicker = ref(null);
@@ -8,7 +8,8 @@ const graph = ref([]);
 const error = ref(false);
 const filterSearch = ref('');
 const page = ref(1);
-
+const graphRef = ref()
+const maxGraphElems = ref();
 function addTicker(name) {
   const newTicker = {
       id: Math.random(),
@@ -75,6 +76,12 @@ onMounted(() => {
     tickers.value.forEach((ticker) => {
       subscribeToTickers(ticker.title, (p) => updateTicker(ticker.title, p))
     })
+
+  window.addEventListener('resize', calcMaxGraphElems)
+})
+
+onUnmounted(() => {
+  window.removeEventListener(calcMaxGraphElems)
 })
 
 function updateTicker(ticker, price) {
@@ -82,8 +89,16 @@ function updateTicker(ticker, price) {
     if (t == selectedTicker.value) {
       graph.value.push(price)
     }
+    while (graph.value.length > maxGraphElems.value) {
+      graph.value.shift()
+    }
     t.price = price
   })
+}
+
+function calcMaxGraphElems() {
+  if (!graphRef.value) return;
+  maxGraphElems.value = graphRef.value.clientWidth / 38;
 }
 
 async function getTickersNames() {
@@ -222,11 +237,8 @@ watch(tickersPaged, () => {
             v-for="ticker in tickersPaged"
             :key="ticker.title"
             @click="selectTicker(ticker)"
-            :class="{
-              'border-4': ticker.title === selectedTicker?.title,
-              'bg-red-100': ticker.price === 'invalid ticker'
-            }"
-            class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
+            :class="[ticker.title === selectedTicker?.title ? 'border-4' : '', ticker.price == 'invalid' ? 'bg-red-100' : 'bg-white']"
+            class=" overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
           <div class="px-4 py-5 sm:p-6 text-center">
             <dt class="text-sm font-medium text-gray-500 truncate">
@@ -261,7 +273,7 @@ watch(tickersPaged, () => {
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{selectedTicker.title}} - USD
         </h3>
-        <div class="flex items-end border-gray-600 border-b border-l h-64">
+        <div ref="graphRef" class="flex items-end border-gray-600 border-b border-l h-64">
           <div
               v-for="(bar,idx) in normalizedGraph"
               :key="idx"

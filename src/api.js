@@ -14,10 +14,11 @@ websocket.addEventListener('message', e => {
     }
 
     if (type == invalidCoinIndex) {
+
         const invalidTicker = JSON.parse(e.data).PARAMETER.split('~')[2];
-        console.log(invalidTicker)
+
         const handlers = tickersHandlers.get(invalidTicker) ?? [];
-        handlers.forEach(fn => fn('invalid ticker'))
+        handlers.forEach(fn => fn('invalid'))
     }
 })
 
